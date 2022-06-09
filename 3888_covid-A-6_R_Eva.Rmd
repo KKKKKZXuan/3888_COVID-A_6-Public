@@ -1,0 +1,117 @@
+---
+title: '3888'
+author: '500225664'
+date: '2022-04-07'
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question
+
+Does population density have an influence towards COVID mortality rate?
+
+# Data setup
+
+## Library
+
+```{r}
+library(readr)
+library(tidyverse)
+library(tuneR)
+library(devtools)
+library(maps)
+library(tsfeatures)
+library(GEOquery)
+library(Biobase)
+library(R.utils)
+library(reshape2)
+library(ggplot2)
+library(limma)
+library(dplyr)
+library(viridis)
+library(cvTools)
+library(corrplot)
+
+```
+
+
+```{r}
+# covid <- read.csv(file = "owid-covid-data.csv")
+
+# covid <- read.csv("data/owid-covid-data-160222.csv")
+covid <- read.csv("https://github.com/owid/covid-19-data/raw/master/public/data/owid-covid-data.csv")
+
+
+Q2 <- filter(covid, date=="2021-06-01")
+Q2_1 = Q2[,c(3, 4, 14, 50, 63)]
+Q2_1[is.na(Q2_1)] <- 0
+Q2_data <- Q2_1[order(-Q2_1$population_density),]
+Q2_data
+
+Q2_data_developed <- Q2_data %>% dplyr::filter(human_development_index >= 0.854)
+Q2_data_developing <- Q2_data %>% dplyr::filter(human_development_index < 0.854)
+
+```
+
+## Output data.csv
+
+```{r}
+write.csv(Q2_data,"data/processed/covid_A6_eva.csv", row.names = FALSE)
+write.csv(Q2_data_developed,"data/processed/covid_A6_eva_developed.csv", row.names = FALSE)
+write.csv(Q2_data_developing,"data/processed/covid_A6_eva_developing.csv", row.names = FALSE)
+```
+
+# Model
+
+```{r}
+# p-value > 0.05, r-value is -0.02393543, not significant, there is no relation between population density and total deaths per million
+cor <- cor.test(Q2_data$population_density,Q2_data$total_deaths_per_million, method="pearson")
+cor
+
+```
+
+Use scatter plot to check the relationship between population density and total deaths per million. This demonstrates that some countries have lower population density but with a higher total deaths value, and for those countries that contain a higher population density, they have small number of total deaths per million. For instance, after ordering the data, we can see that Gibraltar has a low population density but a higher total deaths per million value, while Monaco has a greater population density than Gibraltar, but its total deaths value is smaller than Gibraltar. Therefore, the higher population density would not affect the spread of COVID virus, and would not cause a higher death rate.
+
+```{r}
+Q2_graph <- ggplot(data = Q2_data) + 
+  geom_point(size = 1, aes(x = location,
+                           y = population_density,
+                           color = total_deaths_per_million)) +
+  labs(title = "Comparison of deaths rates in areas with different population densities",
+       subtitle = "By Changwa-Yin (Eva) from COVID A6",
+       # tag = "A",
+       x = "Country / Region",
+       y = "Population density",
+       color = "Total deaths (per million)"
+       ) +
+  scale_colour_viridis(option = "C") +
+  scale_x_discrete(breaks=seq(0,1000,30))
+
+Q2_graph
+
+ggsave("Eva_pd_dea.png",
+       plot = Q2_graph,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+```
+
+
+```{r}
+# Ordering population density
+Q2_data <- Q2_1[order(-Q2_1$population_density),]
+Q2_data
+```
+
+

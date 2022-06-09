@@ -1,0 +1,290 @@
+---
+title: "COVIDA6"
+author: '500514443'
+date: "2022/4/8"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    number_sections: true
+---
+
+# Question
+
+Does the different age group of patients in developing countries such as Romania have an impact on COVID-19 mortality compared to countries such as the Sweden?
+
+# Data setup
+
+## Library
+
+```{r, warning= FALSE,message=FALSE}
+library(R.utils)
+library(reshape2)
+library(ggplot2)
+library(limma)
+library(dplyr)
+library(tidyverse)
+library(class)
+library(cvTools)
+library(randomForest)
+library(tuneR)
+library(devtools)
+library(tsfeatures)
+library(maps)
+library(BiocManager) 
+library(GEOquery)
+library(Biobase)
+library(viridis)
+library(readxl)
+library(tibble)
+library(janitor)
+library(reshape2)
+library(ggthemes)
+library(plotly)
+library(pheatmap)
+library(zoo)
+library(proxy)
+library(DT)
+library(RSpectra)
+library(randomcoloR)
+library(lubridate)
+library(nycflights13)
+library(broom)
+
+```
+
+## Data cleaning 
+```{r DATA}
+covid_data = read.csv("data/owid-covid-data-160222.csv")
+covid_data_age_sex = read.csv("data/Cum_deaths_by_age_sex.csv")
+
+covid_data_age_sex= rename(covid_data_age_sex,
+                           Location = country,
+                           Region = region,
+                           Age_group = age_group,
+                           Group_deaths_number = cum_death_both,
+                           Date = death_reference_date)
+covid_data = rename(covid_data,
+                    ISO_code = iso_code,
+                    Region = continent,
+                    Location =location,
+                    Date = date,
+                    Total_cases = total_cases,
+                    Total_deaths = total_deaths)
+
+covid_data$Date = as.Date(covid_data$Date)
+covid_data_age_sex$Date = as.Date(covid_data_age_sex$Date)
+
+head(covid_data_age_sex)
+head(covid_data)
+```
+
+## Combine two dataset
+```{r}
+covid_data_age = left_join(covid_data_age_sex,covid_data, by = c("Location" = "Location", 
+                                                                 "Date" = "Date",
+                                                                 "Region" = "Region"))
+
+order = c("Region","Location","Date","Age_group","Group_deaths_number","Total_deaths","Total_cases","excelsheet")
+covid_data_age = covid_data_age[, order]
+#covid_data_age$Age_group = as.factor(covid_data_age$Age_group)
+covid_data_age$Total_deaths = as.integer(covid_data_age$Total_deaths)
+covid_data_age$Total_cases = as.integer(covid_data_age$Total_cases)
+
+covid_data_age
+
+```
+
+## Reasons for choosing a particular country
+```{r}
+
+developed_countries = covid_data %>%
+  filter(as.numeric(human_development_index) >= 0.854)%>%
+  filter(Location != "World")%>%
+  select(Location,human_development_index)%>%
+  arrange(desc(human_development_index))%>%
+  distinct()%>%
+  mutate(rank = row_number())
+developed_countries
+
+#Filtering countries which are developing and already developed by their hdi(human development index)
+
+developing_countries = covid_data %>%
+  filter(as.numeric(human_development_index) < 0.854)%>%
+  filter(Location != "World")%>%
+  select(Location,human_development_index)%>%
+  arrange(human_development_index)%>%
+  distinct()%>%
+  mutate(rank = row_number())
+developing_countries
+```
+
+
+testing
+```{r test}
+covid_data_age %>%
+  filter(Location == "Romania") %>%
+  filter(Date == "2020-06-01") %>%
+  #filter(Age_group == "0-9") %>%
+  select(Date)
+  
+```
+
+
+## Output data.csv #TODO
+
+```{r}
+write.csv(covid_data_age,"data/processed/covid_A6_gary.csv", row.names = FALSE)
+```
+
+# Model
+
+## Data visualization
+```{r}
+group1 = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59","60-69", "70-79", "80-89","90+")
+covid_data_age %>%
+  filter(Location == "Sweden") %>%
+  filter(Date <= "2021-12-31" & Date >= "2020-06-01") %>%
+  #mutate(Age_group = ifelse(Age_group =="80-89", "80+", Age_group))%>%
+  #mutate(Age_group = ifelse(Age_group =="90+", "80+", Age_group))%>%
+  filter(excelsheet == "PHAS_Data") %>%
+  filter(Age_group %in% group1) %>%
+  mutate(Month = month(Date)) %>%
+  #mutate(Day = day(Date)) %>%
+  plot_ly(x = ~ Date, 
+          y = ~ Group_deaths_number,
+          color = ~ Age_group, 
+          type = "scatter",
+          mode = "line") %>%
+  layout(title = "COVID-19- Deaths by age group in the Sweden in 2021",
+         yaxis = list(title = "Number of Deaths"),
+         xaxis = list(title = "Date"))#%>%
+  #scale_y_continuous(breaks = seq(0, 4000, 100),
+                     #limits = c(0,4000))
+
+
+
+```
+
+```{r}
+group2 = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59","60-69", "70-79", "80+")
+covid_data_age %>%
+  filter(Location == "Romania") %>%
+  filter(Date <= "2021-12-31" & Date >= "2020-06-01") %>%
+  filter(Age_group %in% group2) %>%
+  mutate(Month = month(Date)) %>%
+  #mutate(Day = day(Date)) %>%
+  plot_ly(x = ~ Date, 
+          y = ~ Group_deaths_number,
+          color = ~ Age_group, 
+          type = "scatter",
+          mode = "line") %>%
+  layout(title = "COVID-19- Deaths by age group in the Romania in 2021",
+         yaxis = list(title = "Number of Deaths"),
+         xaxis = list(title = "Date"))
+
+
+
+```
+
+```{r}
+# find out the correct number of each country
+#loct = filter(covid_data_age,Location == c("Sweden","Romania"))
+#loct
+#loct_ro = filter(covid_data_age,Location == "Romania")
+#loct_year_20_ro = filter(loct_ro,year(Date) == "2020")
+#loct_year_21_ro = filter(loct_ro,year(Date) == "2021")
+
+#last_date_2020_ro = tail(loct_year_20_ro$Date,1)
+#last_date_2021_ro = tail(loct_year_21_ro$Date,1)
+
+#last_date_2020_ro
+#last_date_2021_ro
+
+#
+#loct_sw = filter(covid_data_age,Location == "Sweden")
+
+#loct_sw = filter(covid_data_age,Location == "Sweden")
+#loct_year_20_sw = filter(loct_sw,year(Date) == "2020")
+#loct_year_21_sw = filter(loct_sw,year(Date) == "2021")
+
+#last_date_2020_sw = tail(loct_year_20_sw$Date,1)
+#last_date_2021_sw = tail(loct_year_21_sw$Date,1)
+
+#last_date_2020_sw
+#last_date_2021_sw
+
+
+
+#diff_ro = last_date_2021_ro-last_date_2020_ro
+#diff_sw = last_date_2021_sw-last_date_2020_sw
+
+#test
+#if (diff_ro == 365)
+#{
+#  print("ro 1 year")
+#} else {
+#  print("ro less than 1 year")
+#  }
+
+#if (diff_sw == 365){
+#  print("sw 1 year")
+#} else{
+#  print("sw less than 1 year")
+#}
+  
+
+```
+
+## Cor.test
+```{r}
+ro = filter(covid_data_age,Location == "Romania")
+group = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59","60-69", "70-79", "80+")
+
+#group = c("0-19", "20-39", "40-59", "60-79", "80+")
+
+ro = filter(ro,Date == "2020-06-01" | Date =="2021-12-31")
+ro
+ro = ro %>% 
+  filter(Age_group %in% group) %>%
+  group_by(Age_group)%>%
+  mutate(total = max(Group_deaths_number)-min(Group_deaths_number))%>%
+  filter(Date !="2020-06-01")%>%
+  select(Age_group,total)%>%
+  mutate(Age_group = as.factor(Age_group))
+  
+
+ro = tibble::rowid_to_column(ro, "index")
+ro_indx = as.numeric(ro$index)
+ro_total = as.numeric(ro$total)
+
+cor.test(ro_indx,ro_total)
+
+```
+
+```{r}
+sw = filter(covid_data_age,Location == "Sweden")
+group3 = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59","60-69", "70-79", "80-89","90+")
+
+
+sw = filter(sw,Date == "2020-06-01" | Date =="2021-12-30") #due to limitation of dataset,we will use "2021-12-30" as the last day of 2021
+sw
+sw = sw %>% 
+  filter(Age_group %in% group3) %>%
+  filter(excelsheet != "NBHW_Data")%>%
+  group_by(Age_group)%>%
+  mutate(total = max(Group_deaths_number)-min(Group_deaths_number))%>%
+  filter(Date !="2020-06-01")%>%
+  select(Age_group,total)%>%
+  mutate(Age_group = as.factor(Age_group))
+  
+sw
+sw = tibble::rowid_to_column(sw, "index")
+sw_indx = as.numeric(sw$index)
+sw_total = as.numeric(sw$total)
+
+cor.test(sw_indx,sw_total)
+
+```

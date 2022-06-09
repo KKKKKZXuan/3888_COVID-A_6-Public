@@ -1,0 +1,203 @@
+---
+title: "3888_covid-A_6_R_Pat"
+author: "Pat"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question
+
+Does having pre-existing diseases such as diabetes or underlying cardiovascular diseases increase your risk of developing severe symptoms for cases in the U.S. compared to those in India?
+
+# Data setup
+
+## Library
+
+```{r}
+library(tidyverse)
+```
+
+## Data cleaning
+
+```{r}
+df = read.csv("data/owid-covid-data-160222.csv")
+dim(df)
+colnames(df)
+dis_df = df %>%
+  select("location", "date", "population", "total_deaths" ,"new_deaths_per_million", "new_deaths", "cardiovasc_death_rate", "diabetes_prevalence", "gdp_per_capita", "extreme_poverty", "human_development_index")
+
+dis_df = dis_df %>%
+  rename(Country = location)
+
+xtra_df = read.csv("data/3888_COVIDA6_PAT-extraData.csv")
+
+xtra_df = xtra_df %>%
+  select("Variable", "Country", "Year", "Value")
+#View(xtra_df)
+
+new_xtra = xtra_df %>%
+  filter(Variable %in% c("Acquired immunodeficiency syndrome (AIDS)", "Incidence of hepatitis B", "Incidence of measles", "Incidence of pertussis", "Low birthweight"))
+  
+#View(new_xtra)
+
+new_xtra = new_xtra %>%
+  group_by(Variable, Country) %>%
+  summarise(value = mean(Value))
+
+aids = new_xtra %>%
+  filter(Variable == "Acquired immunodeficiency syndrome (AIDS)")
+aids = aids %>%
+  select(Country, value)
+
+hepatitis = new_xtra %>%
+  filter(Variable == "Incidence of hepatitis B")
+hepatitis = hepatitis %>%
+  select(Country, value)
+
+measles = new_xtra %>%
+  filter(Variable == "Incidence of measles")
+measles = measles %>%
+  select(Country, value)
+
+pertussis = new_xtra %>%
+  filter(Variable == "Incidence of pertussis")
+pertussis = pertussis %>%
+  select(Country, value)
+
+low_birthweight = new_xtra %>%
+  filter(Variable == "Low birthweight")
+low_birthweight = low_birthweight %>%
+  select(Country, value)
+```
+
+
+```{r}
+dis_df = merge(x = dis_df, y = aids, by = "Country", all.x = TRUE)
+dis_df = merge(x = dis_df, y = hepatitis, by = "Country", all.x = TRUE)
+dis_df = merge(x = dis_df, y = measles, by = "Country", all.x = TRUE)
+
+dis_df = subset(dis_df, select = -c(Variable.x, Variable.y, Variable))
+dis_df = dis_df %>%
+  rename(Aids = value.x,
+         Hepatitis = value.y,
+         Measles = value)
+
+dis_df = merge(x = dis_df, y = pertussis, by = "Country", all.x = TRUE)
+dis_df = merge(x = dis_df, y = low_birthweight, by = "Country", all.x = TRUE)
+
+dis_df = subset(dis_df, select = -c(Variable.x, Variable.y))
+dis_df = dis_df %>%
+  rename(Pertussis = value.x,
+         Low_birthweight = value.y)
+
+#view(dis_df)
+```
+
+
+```{r}
+dis_df$date = as.Date(dis_df$date)
+dis_df2 = dis_df
+
+dis_df2$year = format(dis_df$date, "%Y")
+
+
+test = dis_df2 %>%
+  select(Country, new_deaths, year, human_development_index, gdp_per_capita, extreme_poverty, cardiovasc_death_rate, diabetes_prevalence, Aids, Hepatitis, Measles, Pertussis, Low_birthweight) %>%
+  filter(!is.na(new_deaths))
+
+test = test %>%
+  group_by(Country) %>%
+  summarise(total_deaths = sum(new_deaths), hdi = mean(human_development_index),gdp = mean(gdp_per_capita),poverty = mean(extreme_poverty), cardiovascular = mean(cardiovasc_death_rate), diabetes = mean(diabetes_prevalence), Aids = mean(Aids), Hepatitis = mean(Hepatitis), Measles = mean(Measles), Pertussis = mean(Pertussis), Low_bw = mean(Low_birthweight))
+
+test[c("Aids", "Hepatitis", "Measles", "Pertussis", "Low_bw")][is.na(test[c("Aids", "Hepatitis", "Measles", "Pertussis", "Low_bw")])] <- 0
+
+# view(test)
+```
+
+
+```{r}
+developed_countries = test %>%
+  filter(hdi >= 0.854)
+
+developing_countries = test %>% #Filtering countries which are developing and already developed by their hdi(human development index)
+  filter(hdi < 0.854)
+developing_countries = subset(developing_countries, Country!="World")
+
+# View(developed_countries)
+# view(developing_countries)
+```
+
+## Output data.csv
+
+```{r}
+write.csv(developed_countries,"data/processed/covid_A6_pat_developed.csv", row.names = FALSE)
+write.csv(developing_countries,"data/processed/covid_A6_pat_developing.csv", row.names = FALSE)
+```
+
+# Model
+
+```{r}
+#Multiple Linear Regression
+lm1 = lm(total_deaths ~ cardiovascular + diabetes + Aids + Hepatitis + Measles + Pertussis + Low_bw, developing_countries)
+summary(lm1)$coefficients %>% round(5)
+summary(lm1)$r.squared
+
+lm2 = lm(total_deaths ~ cardiovascular + diabetes + Aids + Hepatitis + Measles + Pertussis + Low_bw, developed_countries)
+summary(lm2)$coefficients %>% round(4)
+summary(lm2)$r.squared
+```
+
+
+```{r}
+#Feature selection for Developing Countries
+drop1(lm1, test = "F")
+lm1_2 = update(lm1, . ~ . - diabetes)
+
+drop1(lm1_2, test = "F")
+lm1_3 = update(lm1_2, . ~ . -Aids)
+
+drop1(lm1_3, test = "F")
+lm1_4 = update(lm1_3,.~.-cardiovascular)
+
+drop1(lm1_4, test = "F")
+summary(lm1_4)$r.squared
+```
+
+
+```{r}
+#Feature Selection for Developed countries
+drop1(lm2, test="F")
+lm2_2 = update(lm2, .~. -Hepatitis)
+
+drop1(lm2_2, test="F")
+lm2_3 = update(lm2_2, .~. -cardiovascular)
+
+drop1(lm2_3, test = "F")
+lm2_4 = update(lm2_3, .~. -Measles)
+
+drop1(lm2_4, test = "F")
+lm2_5 = update(lm2_4, .~. -diabetes)
+
+drop1(lm2_5, test = "F")
+lm2_6 = update(lm2_5, .~. -Pertussis)      
+
+drop1(lm2_6, test = "F")
+lm2_7 = update(lm2_6, .~. -Low_bw)
+
+drop1(lm2_7, test = "F")
+summary(lm2_7)$r.squared
+
+summary(lm2_7)$coefficients
+
+```
+

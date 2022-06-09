@@ -1,0 +1,20 @@
+﻿Ammar, R. (2019). randomcoloR: Generate Attractive Random Colors. 
+Arnold, J. B. (2021). ggthemes: Extra Themes, Scales and Geoms for 'ggplot2'. 
+Garnier, Simon, Ross, Noam, Rudis, Robert, Camargo, Pedro, A., Sciaini, Marco, Scherer, & Cédric. (2021). viridis - Colorblind-Friendly Color Maps for R. 10.5281/zenodo.4679424
+Grolemund, G., & Wickham, H. (2011). Dates and Times Made Easy with lubridate. Journal of Statistical Software, 40(3), 1-25. 
+Hyndman, R., Athanasopoulos, G., Bergmeir, C., Caceres, G., Chhay, L., O'Hara-Wild, M., Petropoulos, F., Razbash, S., Wang, E., & Yasmeen, F. (2022). forecast: Forecasting functions for time series and linear models. 
+Hyndman, R. J., & Khandakar, Y. (2008). Automatic time series forecasting: the forecast package for R. Journal of Statistical Software, 26(3), 1-22. 10.18637/jss.v027.i03 
+Pebesma, E. (2018). Simple Features for R: Standardized Support for Spatial Vector Data. The R Journal, 10(1), 439-446. 10.32614/RJ-2018-009 
+Ren, K. (2021). rlist: A Toolbox for Non-Tabular Data Manipulation. 
+Schloerke, B., Cook, D., Larmarange, J., Briatte, F., Marbach, M., Thoen, E., Elberg, A., & Crowley, J. (2021). GGally: Extension to 'ggplot2'. 
+Sievert, C. (2020). Interactive Web-Based Data Visualization with R, plotly, and shiny. Chapman and Hall/CRC. 
+South, A. (2017). rnaturalearth: World Map Data from Natural Earth. 
+South, A. (2017). rnaturalearthdata: World Vector Map Data from Natural Earth Used in 'rnaturalearth'. 
+Temple Lang, D. (2022). RCurl: General Network (HTTP/FTP/...) Client Interface for R. 
+Temple Lang, D. (2022). XML: Tools for Parsing and Generating XML Within R and S-Plus. 
+Waring, E., Quinn, M., McNamara, A., Arino de la Rubia, E., Zhu, H., & Ellis, S. (2022). skimr: Compact and Flexible Summaries of Data. 
+Wickham, H. (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. 
+Wickham, H., Averick, M., Bryan, J., Chang, W., McGowan, L. D. A., François, R., Grolemund, G., Hayes, A., Henry, L., Hester, J., Kuhn, M., Pedersen, T. L., Miller, E., Bache, S. M., Müller, K., Ooms, J., Robinson, D., Seidel, D. P., Spinu, V., . . . Yutani, H. (2019). Welcome to the tidyverse. Journal of Open Source Software, 4(43), 1686. 10.21105/joss.01686 
+Wickham, H., & Bryan, J. (2022). readxl: Read Excel Files. 
+Wickham, H., François, R., Henry, L., & Müller, K. (2022). dplyr: A Grammar of Data Manipulation. 
+Wickham, H., François, R., Henry, L., & Müller, K. (2022). dplyr: A Grammar of Data Manipulation. 

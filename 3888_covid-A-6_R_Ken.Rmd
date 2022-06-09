@@ -1,0 +1,909 @@
+---
+title: "3888_covid-A_6_R_Ken"
+author: "Ken Mao"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Question
+
+Does a higher ICU admission and hospitalization predict a higher mortality rate in developing countries like Malaysia, and Chile compared to developed countries like the United States, and Switzerland?
+
+# Data setup
+
+## Library
+
+```{r library}
+library(tidyverse)
+library(readxl)
+library(tibble)
+library(janitor)
+library(reshape2)
+library(ggplot2)
+library(ggthemes)
+library(plotly)
+library(pheatmap)
+library(maps)
+library(zoo)
+library(proxy)
+library(DT)
+library(limma)
+library(RSpectra)
+library(dplyr)
+library(lubridate)
+library(GGally)
+# library(randomcoloR)
+library(forecast)
+
+# For url
+library(XML)
+library(RCurl)
+library(rlist)
+```
+
+## About data
+
+For this lab, we will examine the global collection of COVID-19 statistics maintained by Our World in Data. The information is updated daily and includes data on confirmed cases, deaths, number of administered vaccination and many others. To find out more details about this data resources, please check out the detailed overview described on their website and GitHub repository <https://github.com/owid/covid-19-data/tree/master/public/data/.> The aim is to study the collective time-varying trends in number of cases and infectivity of COVID-19. We approach this problem by first studying the 25 most severely impacted countries by way of total case numbers. These are: United States, India, Brazil, France, UK, Russia, Turkey, Italy, Germany, Spain, Argentina, Iran, Colombia, Poland, Mexico, Netherlands, Indonesia, Ukraine, South Africa, Philippines, Peru, Belgium, Czechia, Japan, Israel.\
+在本实验室中，我们将检查由 Our World in Data 维护的 COVID-19 统计数据的全球集合。该信息每天更新，包括确诊病例、死亡人数、接种疫苗次数等数据。要了解有关此数据资源的更多详细信息，请查看其网站和 GitHub 存储库 <https://github.com/owid/covid-19-data/tree/master/public/data/> 上描述的详细概述。目的是研究 COVID-19 病例数和传染性的集体随时间变化趋势。我们首先通过总病例数研究 25 个受影响最严重的国家来解决这个问题。它们是：美国、印度、巴西、法国、英国、俄罗斯、土耳其、意大利、德国、西班牙、阿根廷、伊朗、哥伦比亚、波兰、墨西哥、荷兰、印度尼西亚、乌克兰、南非、菲律宾、秘鲁、比利时、捷克、日本、以色列。
+
+United States, Singapore, Philippines, Switzerland.
+
+## Data input and extraction
+
+We encourage you to extract data directly from the web and repeat the lab. If your computer lab is fully reproducible, you will find that you do not need to change your code when you update your result. The pre-downloaded data from 16th February 2022 is given to you as "owid-covid-data-160222.csv".\
+我们鼓励您直接从网络中提取数据并重复该实验。如果您的计算机实验室是完全可重现的，您会发现在更新结果时不需要更改代码。 2022 年 2 月 16 日的预下载数据以"owid-covid-data-160222.csv"的形式提供给您。
+
+[a] The data in "owid-covid-data-160222.csv" contains a lot of COVID-19 related information for each country, such as new cases, new deaths, icu patients, new tests etc, as well as the demography statistics for each country. Read in the data for the selected 25 countries and extract the data between 2020-06-01 and 2021-12-30. Name your R data object as covid. Check to see the column date is coded as the class Date and extract data related selected counties. Consider ways to double check that you have extract the data correctly.\
+"owid-covid-data-160222.csv"中的数据包含每个国家的大量 COVID-19 相关信息，例如新病例、新死亡、ICU 患者、新测试等，以及人口统计每个国家的统计数据。读取选定的 25 个国家/地区的数据，提取 2020-06-01 和 2021-12-30 之间的数据。将您的 R 数据对象命名为 covid。检查以查看列日期被编码为类日期并提取与所选县相关的数据。考虑仔细检查您是否正确提取数据的方法。
+
+```{r dataset_funcion}
+# 所有地区icu的新增数据的计算（基于每日的统计量）
+new_icu_covid_function <- function(location_icu_full) {
+  new_icu_list <- c()
+  is_first_time = TRUE
+  for (i in 1:length(location_icu_full$icu_covid)) {
+    if (is_first_time){
+      new_icu = location_icu_full$icu_covid[i]
+      is_first_time = FALSE
+    }
+    else {
+      new_icu = location_icu_full$icu_covid[i] - location_icu_full$icu_covid[i-1]
+    }
+    new_icu_list <- append(new_icu_list, new_icu)
+  }
+  location_icu_full <- cbind(location_icu_full, new_icu_covid = new_icu_list)
+  return(location_icu_full)
+}
+```
+
+
+```{r dataset}
+# Read in dataset 所有数据导入工作
+
+# covid主数据
+# covid <- read.csv("data/owid-covid-data-160222.csv")
+covid <- read.csv("https://github.com/owid/covid-19-data/raw/master/public/data/owid-covid-data.csv")
+
+covid_used <- covid[c("location",
+                      "date",
+                      "new_cases_smoothed",
+                      "new_cases_smoothed_per_million",
+                      "new_deaths_smoothed",
+                      "new_deaths_smoothed_per_million",
+                      "population",
+                      "population_density",
+                      "human_development_index")]
+
+# ---
+
+# icu数据 - Chile
+# chile_icu_patient <- read.csv("https://github.com/MinCiencia/Datos-COVID19/raw/master/output/producto8/UCI_T.csv")
+chile_icu_full <- read.csv("https://github.com/MinCiencia/Datos-COVID19/raw/master/output/producto20/NumeroVentiladores_T.csv")
+
+# chile_icu_patient <- rename(chile_icu_patient, date = Region)
+# chile_icu_patient <- chile_icu_patient[-1:-2,]
+# chile_icu_patient <- cbind(rowSums(chile_icu_patient[,-1]), chile_icu_patient)
+# chile_icu_patient <- rename(chile_icu_patient, icu_patients = `rowSums(chile_icu_patient[, -1])`)
+# chile_icu_patient <- chile_icu_patient[1:2]
+
+chile_icu_full <- rename(chile_icu_full, c(date = Ventiladores, beds_icu = total, icu_covid = disponibles, icu_free = ocupados))
+# chile_icu_full <- merge(chile_icu_patient, chile_icu_bed, by = "date")
+chile_icu_full <- cbind(location = "Chile", chile_icu_full)
+
+# rm("chile_icu_patient", "chile_icu_bed")
+
+chile_icu_full <- rename(chile_icu_full, icu_total = beds_icu)
+chile_icu_full <- cbind(chile_icu_full, icu_occupancy_rate = chile_icu_full$icu_covid / chile_icu_full$icu_total * 100)
+chile_icu_full <- new_icu_covid_function(chile_icu_full)
+
+# chile_icu_full <- cbind(chile_icu_full, new_icu_covid = chile_new_icu)
+# rm(is_first_time)
+# rm(chile_new_icu)
+
+# ---
+
+# icu数据 - Malaysia
+# malaysia_icu_full <- read.csv("data/icu.csv")
+malaysia_icu_full <- read.csv("https://raw.githubusercontent.com/MoH-Malaysia/covid19-public/main/epidemic/icu.csv")
+# https://github.com/MoH-Malaysia/covid19-public/tree/main/epidemic#icu
+
+malaysia_icu_full <- malaysia_icu_full[, -2]
+malaysia_icu_full <- aggregate(cbind(beds_icu_total, icu_covid) ~ date, data = malaysia_icu_full, sum)
+malaysia_icu_full <- cbind(location = "Malaysia", malaysia_icu_full)
+malaysia_icu_full <- rename(malaysia_icu_full, icu_total = beds_icu_total)
+malaysia_icu_full <- cbind(malaysia_icu_full, icu_free = malaysia_icu_full$icu_total - malaysia_icu_full$icu_covid)
+malaysia_icu_full <- cbind(malaysia_icu_full, icu_occupancy_rate = malaysia_icu_full$icu_covid / malaysia_icu_full$icu_total * 100)
+malaysia_icu_full <- new_icu_covid_function(malaysia_icu_full)
+
+# ---
+
+# icu数据 - United_states
+# united_states_icu_full <- read.csv("data/COVID-19_Reported_Patient_Impact_and_Hospital_Capacity_by_State_Timeseries.csv")
+united_states_icu_full <- read.csv("https://healthdata.gov/api/views/g62h-syeh/rows.csv?accessType=DOWNLOAD")
+
+united_states_icu_full <- united_states_icu_full[, -1]
+united_states_icu_full <- aggregate(cbind(total_staffed_adult_icu_beds, staffed_icu_adult_patients_confirmed_covid) ~ date, data = united_states_icu_full, sum)
+united_states_icu_full <- cbind(location = "United States", united_states_icu_full)
+united_states_icu_full <- rename(united_states_icu_full, icu_total = total_staffed_adult_icu_beds)
+united_states_icu_full <- rename(united_states_icu_full, icu_covid = staffed_icu_adult_patients_confirmed_covid)
+united_states_icu_full <- cbind(united_states_icu_full, icu_free = united_states_icu_full$icu_total - united_states_icu_full$icu_covid)
+united_states_icu_full <- cbind(united_states_icu_full, icu_occupancy_rate = united_states_icu_full$icu_covid / united_states_icu_full$icu_total * 100)
+united_states_icu_full <- new_icu_covid_function(united_states_icu_full)
+
+# ---
+
+# icu数据 - Switzerland
+switzerland_icu_full <- read.csv("data/bag_covid_19_data_csv_03_May_2022/COVID19HospCapacity_geoRegion.csv")
+
+# temp <- tempfile()
+# temp2 <- tempfile()
+# # download.file("https://www.covid19.admin.ch/api/data/20220503-ls6se5v3/downloads/sources-csv.zip", temp)
+# unzip(zipfile = temp, exdir = temp2)
+# switzerland_icu_full <- read.csv(file.path(temp2, "./COVID19HospCapacity_geoRegion.csv"))
+# rm("temp", "temp2")
+
+switzerland_icu_full <- switzerland_icu_full[, -2]
+switzerland_icu_full <- aggregate(cbind(ICU_Capacity, ICU_Covid19Patients, ICU_FreeCapacity) ~ date, data = switzerland_icu_full, sum)
+switzerland_icu_full <- cbind(location = "Switzerland", switzerland_icu_full)
+switzerland_icu_full <- rename(switzerland_icu_full, icu_total = ICU_Capacity)
+switzerland_icu_full <- rename(switzerland_icu_full, icu_covid = ICU_Covid19Patients)
+switzerland_icu_full <- rename(switzerland_icu_full, icu_free = ICU_FreeCapacity)
+switzerland_icu_full <- cbind(switzerland_icu_full, icu_occupancy_rate = switzerland_icu_full$icu_covid / switzerland_icu_full$icu_total * 100)
+switzerland_icu_full <- new_icu_covid_function(switzerland_icu_full)
+
+# ---
+
+# ICU data
+# current_covid_patients_icu <- read.csv("https://github.com/owid/covid-19-data/raw/master/public/data/hospitalizations/covid-hospitalizations.csv")
+# current_covid_patients_icu <- read.csv("data/current-covid-patients-icu.csv")
+
+# ---
+
+# Developed country data
+
+# WAY1
+developed_countries_full <- filter(covid_used, human_development_index >= 0.854)
+developed_countries <- unique(developed_countries_full$location)
+
+covid_used$developed <- ifelse(
+  covid_used$location %in% developed_countries,
+  "Yes",
+  "No")
+
+# developing_countries <- test %>% #Filtering countries which are developing and already developed by their hdi(human development index)
+#   filter(hdi < 0.854)
+# developing_countries <- subset(developing_countries, location!="World")
+
+# WAY2
+# tables <- getURL("https://worldpopulationreview.com/country-rankings/developed-countries",.opts = list(ssl.verifypeer = FALSE)) %>% readHTMLTable()
+# developed_countries_full <- tables[[1]]
+# rm(tables)
+# developed_countries_full <- read.csv("data/csvData.csv")
+```
+
+
+```{r date_range}
+# Range of date
+start_date <- "2020-06-01"
+end_date <- "2021-12-31"
+
+range_data <- function(data, start_date, end_date){
+  data$date <- as.Date(data$date)
+  data <- data[(data$date >= start_date & data$date <= end_date), ]
+  return(data)
+}
+
+covid_used <- range_data(covid_used, start_date, end_date)
+malaysia_icu_full <- range_data(malaysia_icu_full, start_date, end_date)
+chile_icu_full <- range_data(chile_icu_full, start_date, end_date)
+united_states_icu_full <- range_data(united_states_icu_full, start_date, end_date)
+switzerland_icu_full <- range_data(switzerland_icu_full, start_date, end_date)
+
+```
+
+
+```{r selected_countries}
+# List of countries to study
+
+# countries <- c("United States",
+#               "India",
+#               "Brazil",
+#               "France",
+#               "United Kingdom",
+#               "Russia",
+#               "Turkey",
+#               "Italy",
+#               "Germany",
+#               "Spain",
+#               "Argentina",
+#               "Iran",
+#               "Colombia",
+#               "Poland",
+#               'Mexico',
+#               "Netherlands",
+#               "Indonesia",
+#               "Ukraine",
+#               "South Africa",
+#               "Philippines",
+#               "Peru",
+#               "Belgium",
+#               "Czechia",
+#               "Japan",
+#               "Israel")
+
+# Q1中选择的几个问题
+countries <- c("Chile",
+              "Malaysia",
+              "Switzerland",
+              "United States")
+
+countries <- sort(countries)
+
+## selecting countries and required time period.
+covid_used_selected <- covid_used[covid_used$location %in% countries, ]
+
+## covid <- covid_full %>% filter(covid_full$location %in% countries) ## Alternative
+
+covid_A6_k <- rbind(chile_icu_full, malaysia_icu_full, switzerland_icu_full, united_states_icu_full)
+
+covid_A6_k <- merge(covid_used_selected, covid_A6_k, by = c("location", "date"))
+
+covid_A6_k <- cbind(covid_A6_k, icu_total_per_million = covid_A6_k$icu_total / covid_A6_k$population * 1000000)
+covid_A6_k <- cbind(covid_A6_k, icu_covid_per_million = covid_A6_k$icu_covid / covid_A6_k$population * 1000000)
+covid_A6_k <- cbind(covid_A6_k, icu_free_per_million = covid_A6_k$icu_free / covid_A6_k$population * 1000000)
+covid_A6_k <- cbind(covid_A6_k, new_icu_covid_per_million = covid_A6_k$new_icu_covid / covid_A6_k$population * 1000000)
+
+covid_A6_k <- covid_A6_k %>% relocate(any_of(c(
+  "location",
+  "date",
+  "developed",
+  "new_cases_smoothed",
+  "new_cases_smoothed_per_million",
+  "new_deaths_smoothed",
+  "new_deaths_smoothed_per_million",
+  "new_icu_covid",
+  "new_icu_covid_per_million",
+  "icu_total",
+  "icu_total_per_million",
+  "icu_covid",
+  "icu_covid_per_million",
+  "icu_free",
+  "icu_free_per_million",
+  "icu_occupancy_rate",
+  "population",
+  "population_density",
+  "human_development_index"
+)))
+
+# Don't forget to check whether you have read your data in correctly.
+# table(as.character(covid_full$location))  
+```
+
+
+```{r}
+covid_A6_k_develop_number <- aggregate(
+  list(new_cases_smoothed = covid_A6_k$new_cases_smoothed,
+       new_deaths_smoothed = covid_A6_k$new_deaths_smoothed,
+       new_icu_covid = covid_A6_k$new_icu_covid,
+       icu_total = covid_A6_k$icu_total,
+       icu_covid = covid_A6_k$icu_covid,
+       icu_free = covid_A6_k$icu_free,
+       population = covid_A6_k$population),
+  by = list(date = covid_A6_k$date,
+            developed = covid_A6_k$developed),
+  sum)
+
+covid_A6_k_develop_rate <- aggregate(
+  list(new_cases_smoothed_per_million = covid_A6_k$new_cases_smoothed_per_million,
+       new_deaths_smoothed_per_million = covid_A6_k$new_deaths_smoothed_per_million,
+       new_icu_covid_per_million = covid_A6_k$new_icu_covid_per_million,
+       icu_total_per_million = covid_A6_k$icu_total_per_million,
+       icu_covid_per_million = covid_A6_k$icu_covid_per_million,
+       icu_free_per_million = covid_A6_k$icu_free_per_million,
+       icu_occupancy_rate = covid_A6_k$icu_occupancy_rate,
+       population_density = covid_A6_k$population_density),
+  by = list(date = covid_A6_k$date,
+            developed = covid_A6_k$developed),
+  mean)
+
+covid_A6_k_develop <- merge(covid_A6_k_develop_number, covid_A6_k_develop_rate, by = c("date", "developed"))
+
+covid_A6_k_develop <- covid_A6_k_develop %>% relocate(any_of(c(
+  "date",
+  "developed",
+  "new_cases_smoothed",
+  "new_cases_smoothed_per_million",
+  "new_deaths_smoothed",
+  "new_deaths_smoothed_per_million",
+  "new_icu_covid",
+  "new_icu_covid_per_million",
+  "icu_total",
+  "icu_total_per_million",
+  "icu_covid",
+  "icu_covid_per_million",
+  "icu_free",
+  "icu_free_per_million",
+  "icu_occupancy_rate",
+  "population",
+  "population_density"
+)))
+
+rm("covid_A6_k_develop_number", "covid_A6_k_develop_rate")
+```
+
+
+## Output data.csv
+```{r}
+write.csv(covid_A6_k,"data/processed/covid_A6_ken.csv", row.names = FALSE)
+write.csv(covid_A6_k_develop,"data/processed/covid_A6_ken_develop.csv", row.names = FALSE)
+```
+
+
+## Initial data analysis
+
+```{r}
+plot_new_cases_per_million <- ggplot(covid_A6_k, 
+                                     aes(x = date,
+                                         y = new_cases_smoothed_per_million,
+                                         group = developed,
+                                         color = location)
+                                     ) +
+  geom_line() + 
+  ylab("Number of new cases") +
+  ggtitle("plot_new_cases_per_million") +
+  labs(color = "Country / Region")
+
+plot_new_deaths_per_million <- ggplot(covid_A6_k,
+                                      aes(x = date,
+                                          y = new_deaths_smoothed_per_million,
+                                          group = developed,
+                                          color = location)
+                                      ) +
+  geom_line() + 
+  ylab("Number of new deaths") +
+  ggtitle("plot_new_deaths_per_million") +
+  labs(color = "Country / Region")
+
+plot_new_icu_covid_per_million <- ggplot(covid_A6_k, 
+                                         aes(x = date,
+                                             y = new_icu_covid_per_million,
+                                             group = developed,
+                                             color = location)
+                                         ) +
+  geom_line() + 
+  ylab("Number of new covid ICU") +
+  ggtitle("plot_new_icu_covid_per_million") +
+  labs(color = "Country / Region")
+
+plot_icu_occupancy_rate <- ggplot(covid_A6_k, 
+                                  aes(x = date,
+                                      y = icu_occupancy_rate,
+                                      group = developed,
+                                      color = location)
+                                  ) +
+  geom_line() + 
+  ylab("Number of ICU occupancy rate") +
+  ggtitle("plot_icu_occupancy_rate") +
+  labs(color = "Country / Region")
+
+
+# par(mfrow=c(1,3))
+# 
+# plot(plot_new_cases_smoothed_per_million)
+# plot(plot_weekly_icu_admissions_per_million)
+# plot(plot_new_deaths_smoothed_per_million)
+
+ggplotly(plot_new_cases_per_million)
+ggplotly(plot_new_deaths_per_million)
+ggplotly(plot_new_icu_covid_per_million)
+ggplotly(plot_icu_occupancy_rate)
+
+```
+
+```{r}
+plot_develop_new_cases_per_million <- ggplot(covid_A6_k_develop, 
+                                     aes(x = date,
+                                         y = new_cases_smoothed_per_million,
+                                         group = developed,
+                                         color = developed)
+                                     ) +
+  geom_line() + 
+  labs(title = "Comparison of new cases of covid 19 between developed and developing countries",
+       subtitle = "By Zhekai-Mao (Ken) from COVID A6",
+       x = "Date",
+       y = "Number of new cases",
+       color = "Developed Country / Region"
+       )
+
+plot_develop_new_deaths_per_million <- ggplot(covid_A6_k_develop,
+                                      aes(x = date,
+                                          y = new_deaths_smoothed_per_million,
+                                          group = developed,
+                                          color = developed)
+                                      ) +
+  geom_line() + 
+  labs(title = "Comparison of new deaths of covid 19 between developed and developing countries",
+       subtitle = "By Zhekai-Mao (Ken) from COVID A6",
+       x = "Date",
+       y = "Number of new deaths",
+       color = "Developed Country / Region"
+       )
+
+plot_develop_new_icu_covid_per_million <- ggplot(covid_A6_k_develop, 
+                                         aes(x = date,
+                                             y = new_icu_covid_per_million,
+                                             group = developed,
+                                             color = developed)
+                                         ) +
+  geom_line() + 
+  labs(title = "Comparison of new covid ICU of covid 19 between developed and developing countries",
+       subtitle = "By Zhekai-Mao (Ken) from COVID A6",
+       x = "Date",
+       y = "Number of new covid ICU",
+       color = "Developed Country / Region"
+       )
+
+plot_develop_icu_occupancy_rate <- ggplot(covid_A6_k_develop, 
+                                  aes(x = date,
+                                      y = icu_occupancy_rate,
+                                      group = developed,
+                                      color = developed)
+                                  ) +
+  geom_line() + 
+    labs(title = "Comparison of ICU occupancy rate of covid 19 between developed and developing countries",
+       subtitle = "By Zhekai-Mao (Ken) from COVID A6",
+       x = "Date",
+       y = "ICU occupancy rate",
+       color = "Developed Country / Region"
+       )
+
+ggplotly(plot_develop_new_cases_per_million)
+ggplotly(plot_develop_new_deaths_per_million)
+ggplotly(plot_develop_new_icu_covid_per_million)
+ggplotly(plot_develop_icu_occupancy_rate)
+
+ggsave("Ken_case_develop.png",
+       plot = plot_develop_new_cases_per_million,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+
+ggsave("Ken_death_develop.png",
+       plot = plot_develop_new_deaths_per_million,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+
+ggsave("Ken_icu_develop.png",
+       plot = plot_develop_new_icu_covid_per_million,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+
+ggsave("Ken_icu_rate_develop.png",
+       plot = plot_develop_icu_occupancy_rate,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+
+```
+
+
+The figure above highlights the evolution of the reproduction rate for each country. Notably, there doesn't appear to be a great deal of consistency between various countries' behaviours. The amplitude, periodicity and general trends appears to display no global consistency. If you wish to isolate a single country, double click on a single country on the plotly and you can see it in an isolated setting.\
+上图突出了每个国家繁殖率的演变。 值得注意的是，各国的行为之间似乎没有很大的一致性。 幅度、周期性和总体趋势似乎没有显示出全局一致性。 如果你想孤立一个国家，在情节上双击一个国家，你可以在一个孤立的环境中看到它。
+
+# Verify
+
+Functions
+
+```{r}
+# logistic regression in new cases and icu and death in different location
+
+covid_location_covid_A6_k <- function(covid, location_set) {
+  if (location_set == "Yes" | location_set == "No") {
+    covid_location <- filter(covid, developed == location_set)
+    covid_location <- covid_location[c("developed",
+                                       "date",
+                                       "new_cases_smoothed_per_million",
+                                       "new_deaths_smoothed_per_million",
+                                       "new_icu_covid_per_million")]
+    return(covid_location)
+  }
+  else {
+    covid_location <- filter(covid, location == location_set)
+    covid_location <- covid_location[c("location",
+                                       "date",
+                                       "new_cases_smoothed_per_million",
+                                       "new_deaths_smoothed_per_million",
+                                       "new_icu_covid_per_million")]
+    return(covid_location)
+  }
+  
+}
+
+logi_cases_deaths_covid_A6_k <- function(covid, logi_location) {
+  covid_location <- covid_location_covid_A6_k(covid, logi_location)
+  logi_covid_location <- glm(formula = covid_location$new_cases_smoothed_per_million ~ covid_location$new_deaths_smoothed_per_million)
+  return(summary(logi_covid_location))
+}
+
+logi_deaths_cases_covid_A6_k <- function(covid, logi_location) {
+  covid_location <- covid_location_covid_A6_k(covid, logi_location)
+  logi_covid_location <- glm(formula = covid_location$new_deaths_smoothed_per_million ~ covid_location$new_cases_smoothed_per_million)
+  return(summary(logi_covid_location))
+}
+
+logi_cases_icu_covid_A6_k <- function(covid, logi_location) {
+  covid_location <- covid_location_covid_A6_k(covid, logi_location)
+  logi_covid_location <- glm(formula = covid_location$new_cases_smoothed_per_million ~ covid_location$new_icu_covid_per_million)
+  return(summary(logi_covid_location))
+}
+
+logi_icu_cases_covid_A6_k <- function(covid, logi_location) {
+  covid_location <- covid_location_covid_A6_k(covid, logi_location)
+  logi_covid_location <- glm(formula = covid_location$new_icu_covid_per_million ~ covid_location$new_cases_smoothed_per_million)
+  return(summary(logi_covid_location))
+}
+
+logi_deaths_icu_covid_A6_k <- function(covid, logi_location) {
+  covid_location <- covid_location_covid_A6_k(covid, logi_location)
+  logi_covid_location <- glm(formula = covid_location$new_deaths_smoothed_per_million ~ covid_location$new_icu_covid_per_million)
+  return(summary(logi_covid_location))
+}
+
+logi_icu_deaths_covid_A6_k <- function(covid, logi_location) {
+  covid_location <- covid_location_covid_A6_k(covid, logi_location)
+  logi_covid_location <- glm(formula = covid_location$new_icu_covid_per_million ~ covid_location$new_deaths_smoothed_per_million)
+  return(summary(logi_covid_location))
+}
+```
+
+
+## Logistic regression
+
+### By Countries
+
+```{r}
+logi_cases_deaths_chile <- logi_cases_deaths_covid_A6_k(covid_A6_k, "Chile")
+logi_cases_deaths_malaysia <- logi_cases_deaths_covid_A6_k(covid_A6_k, "Malaysia")
+logi_cases_deaths_switzerland <- logi_cases_deaths_covid_A6_k(covid_A6_k, "Switzerland")
+logi_cases_deaths_united_states <- logi_cases_deaths_covid_A6_k(covid_A6_k, "United States")
+
+logi_deaths_cases_chile <- logi_deaths_cases_covid_A6_k(covid_A6_k, "Chile")
+logi_deaths_cases_malaysia <- logi_deaths_cases_covid_A6_k(covid_A6_k, "Malaysia")
+logi_deaths_cases_switzerland <- logi_deaths_cases_covid_A6_k(covid_A6_k, "Switzerland")
+logi_deaths_cases_united_states <- logi_deaths_cases_covid_A6_k(covid_A6_k, "United States")
+
+logi_cases_icu_chile <- logi_cases_icu_covid_A6_k(covid_A6_k, "Chile")
+logi_cases_icu_malaysia <- logi_cases_icu_covid_A6_k(covid_A6_k, "Malaysia")
+logi_cases_icu_switzerland <- logi_cases_icu_covid_A6_k(covid_A6_k, "Switzerland")
+logi_cases_icu_united_states <- logi_cases_icu_covid_A6_k(covid_A6_k, "United States")
+
+logi_icu_cases_chile <- logi_icu_cases_covid_A6_k(covid_A6_k, "Chile")
+logi_icu_cases_malaysia <- logi_icu_cases_covid_A6_k(covid_A6_k, "Malaysia")
+logi_icu_cases_switzerland <- logi_icu_cases_covid_A6_k(covid_A6_k, "Switzerland")
+logi_icu_cases_united_states <- logi_icu_cases_covid_A6_k(covid_A6_k, "United States")
+
+logi_deaths_icu_chile <- logi_deaths_icu_covid_A6_k(covid_A6_k, "Chile")
+logi_deaths_icu_malaysia <- logi_deaths_icu_covid_A6_k(covid_A6_k, "Malaysia")
+logi_deaths_icu_switzerland <- logi_deaths_icu_covid_A6_k(covid_A6_k, "Switzerland")
+logi_deaths_icu_united_states <- logi_deaths_icu_covid_A6_k(covid_A6_k, "United States")
+
+logi_icu_deaths_chile <- logi_icu_deaths_covid_A6_k(covid_A6_k, "Chile")
+logi_icu_deaths_malaysia <- logi_icu_deaths_covid_A6_k(covid_A6_k, "Malaysia")
+logi_icu_deaths_switzerland <- logi_icu_deaths_covid_A6_k(covid_A6_k, "Switzerland")
+logi_icu_deaths_united_states <- logi_icu_deaths_covid_A6_k(covid_A6_k, "United States")
+```
+
+
+```{r}
+print(logi_cases_deaths_chile)
+print(logi_cases_deaths_malaysia)
+print(logi_cases_deaths_switzerland)
+print(logi_cases_deaths_united_states)
+
+print(logi_deaths_cases_chile)
+print(logi_deaths_cases_malaysia)
+print(logi_deaths_cases_switzerland)
+print(logi_deaths_cases_united_states)
+
+print(logi_cases_icu_chile)
+print(logi_cases_icu_malaysia)
+print(logi_cases_icu_switzerland)
+print(logi_cases_icu_united_states)
+
+print(logi_icu_cases_chile)
+print(logi_icu_cases_malaysia)
+print(logi_icu_deaths_switzerland)
+print(logi_icu_cases_united_states)
+
+print(logi_deaths_icu_chile)
+print(logi_deaths_icu_malaysia)
+print(logi_deaths_icu_switzerland)
+print(logi_deaths_icu_united_states)
+
+print(logi_icu_deaths_chile)
+print(logi_icu_deaths_malaysia)
+print(logi_icu_deaths_switzerland)
+print(logi_icu_deaths_united_states)
+
+```
+
+### By Develop
+
+```{r}
+logi_cases_deaths_developed <- logi_cases_deaths_covid_A6_k(covid_A6_k_develop, "Yes")
+logi_cases_deaths_developing <- logi_cases_deaths_covid_A6_k(covid_A6_k_develop, "No")
+
+logi_deaths_cases_developed <- logi_deaths_cases_covid_A6_k(covid_A6_k_develop, "Yes")
+logi_deaths_cases_developing <- logi_deaths_cases_covid_A6_k(covid_A6_k_develop, "No")
+
+logi_cases_icu_developed <- logi_cases_icu_covid_A6_k(covid_A6_k_develop, "Yes")
+logi_cases_icu_developing <- logi_cases_icu_covid_A6_k(covid_A6_k_develop, "No")
+
+logi_icu_cases_developed <- logi_icu_cases_covid_A6_k(covid_A6_k_develop, "Yes")
+logi_icu_cases_developing <- logi_icu_cases_covid_A6_k(covid_A6_k_develop, "No")
+
+logi_deaths_icu_developed <- logi_deaths_icu_covid_A6_k(covid_A6_k_develop, "Yes")
+logi_deaths_icu_developing <- logi_deaths_icu_covid_A6_k(covid_A6_k_develop, "No")
+
+logi_icu_deaths_developed <- logi_icu_deaths_covid_A6_k(covid_A6_k_develop, "Yes")
+logi_icu_deaths_developing <- logi_icu_deaths_covid_A6_k(covid_A6_k_develop, "No")
+```
+
+
+```{r}
+print(logi_cases_deaths_developed)
+print(logi_cases_deaths_developing)
+
+print(logi_deaths_cases_developed)
+print(logi_deaths_cases_developing)
+
+print(logi_cases_icu_developed)
+print(logi_cases_icu_developing)
+
+print(logi_icu_cases_developed)
+print(logi_icu_cases_developing)
+
+print(logi_deaths_icu_developed)
+print(logi_deaths_icu_developing)
+
+print(logi_icu_deaths_developed)
+print(logi_icu_deaths_developing)
+
+```
+
+
+## Correlation
+
+### By Countries
+
+```{r}
+new_c_d_i_chile <- covid_location_covid_A6_k(covid_A6_k, "Chile")
+new_c_d_i_malaysia <- covid_location_covid_A6_k(covid_A6_k, "Malaysia")
+new_c_d_i_switzerland <- covid_location_covid_A6_k(covid_A6_k, "Switzerland")
+new_c_d_i_united_states <- covid_location_covid_A6_k(covid_A6_k, "United States")
+
+cor_cases_deaths_icu_chile <- Hmisc::rcorr(as.matrix(new_c_d_i_chile[, 3:5]))
+cor_cases_deaths_icu_chile$r[3,]
+cor_cases_deaths_icu_chile$P[3,]
+ggpairs(new_c_d_i_chile, columns = 3:5)
+
+cor_cases_deaths_icu_malaysia <- Hmisc::rcorr(as.matrix(new_c_d_i_malaysia[, 3:5]))
+cor_cases_deaths_icu_malaysia$r[3,]
+cor_cases_deaths_icu_malaysia$P[3,]
+ggpairs(new_c_d_i_malaysia, columns = 3:5)
+
+cor_cases_deaths_icu_switzerland <- Hmisc::rcorr(as.matrix(new_c_d_i_switzerland[, 3:5]))
+cor_cases_deaths_icu_switzerland$r[3,]
+cor_cases_deaths_icu_switzerland$P[3,]
+ggpairs(new_c_d_i_switzerland, columns = 3:5)
+
+cor_cases_deaths_united_states <- Hmisc::rcorr(as.matrix(new_c_d_i_united_states[, 3:5]))
+cor_cases_deaths_united_states$r[3,]
+cor_cases_deaths_united_states$P[3,]
+ggpairs(new_c_d_i_united_states, columns = 3:5)
+```
+
+
+### By Develop
+
+```{r}
+new_c_d_i_developed <- covid_location_covid_A6_k(covid_A6_k_develop, "Yes")
+new_c_d_i_developing <- covid_location_covid_A6_k(covid_A6_k_develop, "No")
+
+cor_cases_deaths_icu_developed <- Hmisc::rcorr(as.matrix(new_c_d_i_developed[, 3:5]))
+cor_cases_deaths_icu_developed$r[3,]
+cor_cases_deaths_icu_developed$P[3,]
+cor_cdi_developed <- ggpairs(new_c_d_i_developed, columns = 3:5) + 
+  labs(title = "New cases / deaths / ICUs compare in developed countries",
+       subtitle = "By Zhekai-Mao (Ken) from COVID A6"
+       )
+cor_cdi_developed
+
+ggsave("Ken_cor_cdi_developed.png",
+       plot = cor_cdi_developed,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+
+cor_cases_deaths_icu_developing <- Hmisc::rcorr(as.matrix(new_c_d_i_developing[, 3:5]))
+cor_cases_deaths_icu_developing$r[3,]
+cor_cases_deaths_icu_developing$P[3,]
+cor_cdi_developing <- ggpairs(new_c_d_i_developing, columns = 3:5) + 
+  labs(title = "New cases / deaths / ICUs compare in developeing countries",
+       subtitle = "By Zhekai-Mao (Ken) from COVID A6"
+       )
+
+cor_cdi_developing
+
+ggsave("Ken_cor_cdi_developing.png",
+       plot = cor_cdi_developing,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+```
+
+
+# Model
+
+## ARIMA
+
+### By Countries
+
+```{r}
+developed_countries <- filter(covid_A6_k, developed == "Yes")
+developing_countries <- filter(covid_A6_k, developed == "No")
+
+tsdisplay(developed_countries$new_icu_covid_per_million)
+tsdisplay(developing_countries$new_icu_covid_per_million)
+
+fit <- auto.arima(developed_countries$new_icu_covid_per_million)
+forecast(fit, 30)
+plot(forecast(fit, 30))
+
+fit <- auto.arima(developing_countries$new_icu_covid_per_million)
+forecast(fit, 30)
+plot(forecast(fit, 30))
+```
+
+### By Develop
+
+```{r}
+developed_countries <- filter(covid_A6_k_develop, developed == "Yes")
+developing_countries <- filter(covid_A6_k_develop, developed == "No")
+
+tsdisplay(developed_countries$new_icu_covid_per_million)
+tsdisplay(developing_countries$new_icu_covid_per_million)
+
+png("./plot/Ken_icu_tsd_developed.png",
+    width = 2560,
+    height = 1440,
+    res = 320)
+tsdisplay(developed_countries$new_icu_covid_per_million, main = "ACF / PACF of total cases in developed countries", sub = "By Zhekai-Mao (Ken) from COVID A6")
+dev.off()
+
+png("./plot/Ken_icu_tsd_developing.png",
+    width = 2560,
+    height = 1440,
+    res = 320)
+tsdisplay(developing_countries$new_icu_covid_per_million, main = "ACF / PACF of total cases in developing countries", sub = "By Zhekai-Mao (Ken) from COVID A6")
+dev.off()
+
+
+fit <- auto.arima(developed_countries$new_icu_covid_per_million)
+forecast(fit, 30)
+plot(forecast(fit, 30))
+
+png("./plot/Ken_icu_ARIMA_developed.png",
+    width = 2560,
+    height = 1440,
+    res = 320)
+plot(forecast(fit, 30))
+dev.off()
+
+fit <- auto.arima(developing_countries$new_icu_covid_per_million)
+forecast(fit, 30)
+plot(forecast(fit, 30))
+
+png("./plot/Ken_icu_ARIMA_developing.png",
+    width = 2560,
+    height = 1440,
+    res = 320)
+plot(forecast(fit, 30))
+dev.off()
+```
+
+
+```{r}
+# fit1 <- auto.arima(developed_countries$new_icu_covid_per_million)
+# fit2 <- auto.arima(developing_countries$new_icu_covid_per_million)
+# forecast1 <- forecast(fit1, 30)
+# forecast2 <- forecast(fit2, 30)
+# 
+# par(mfrow=c(2,1))
+# plot(forecast1)
+# plot(forecast2)
+```
+
+
+```{r}
+
+# fit_developed <- auto.arima(developed_countries$new_icu_covid_per_million)
+# fit_developing <- auto.arima(developing_countries$new_icu_covid_per_million)
+# plot_fit_developed <- plot(forecast(fit_developed, 30))
+# plot_fit_developing <- plot(forecast(fit_developing, 30))
+# 
+# # png("./plot/Ken_report_merge.png",
+# #     width = 2560,
+# #     height = 1440,
+# #     res = 320)
+# # par(mfrow=c(2,2))
+# # cor_cdi_developed
+# # cor_cdi_developing
+# # # forecast(fit, 30)
+# # plot(forecast(fit_developed, 30))
+# # # forecast(fit, 30)
+# # plot(forecast(fit_developing, 30))
+# 
+# require(gridExtra)
+# plot1 <- cor_cdi_developed
+# plot2 <- cor_cdi_developing
+# plot3 <- plot_fit_developed
+# plot4 <- plot_fit_developing
+# grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
+# 
+# 
+# plot1 <- cor_cdi_developed
+# plot2 <- cor_cdi_developing
+# 
+# par(mfrow=c(2,2))
+# plot1
+# plot2
+# plot(forecast(fit_developed, 30))
+# plot(forecast(fit_developing, 30))
+
+```
+

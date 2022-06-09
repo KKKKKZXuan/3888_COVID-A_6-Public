@@ -1,0 +1,299 @@
+---
+title: "3888_covid-A_6_R_Amber"
+author: 'Amber'
+date: "4/11/2022"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(forecast)
+```
+
+## EDA
+AIM: Does vaccination reduce death rated in the population of developing countries compared to developed countries
+
+
+As you can see from the chart below, Australia has fewer deaths for the same level of vaccination than Malaysia. It can therefore be considered whether vaccination has reduced mortality in the Australian population compared to Malaysia.
+
+```{r}
+# data <- read.csv("data/owid-covid-data-160222.csv")
+data <- read.csv("https://github.com/owid/covid-19-data/raw/master/public/data/owid-covid-data.csv")
+
+# data <- read.csv("owid-covid-data.csv")
+
+# select Australia and Malaysia data
+data <- rbind(data[data$location == 'Australia',],
+              data[data$location == 'Malaysia',])
+
+
+library(ggplot2)
+
+death_vac_plot <- ggplot(data = data) + 
+  geom_point(aes(x = total_vaccinations_per_hundred,
+                 y = total_deaths_per_million,
+                 color = location)) +
+    labs(title = "Comparison of vaccinations rates and deaths rates in different areas",
+         subtitle = "By Zhanqiu-Chen (Amber) from COVID A6",
+         # tag = "A",
+         x = "Total vaccinations (per hundred)",
+         y = "Total deaths (per million)",
+         color = "Country / Region"
+         )
+
+death_vac_plot
+
+ggsave("Amber_vac_dea.png",
+       plot = death_vac_plot,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+```
+
+
+We first filter out suitable countries that represents developing countries and developed countries, as we can see from the view() function, only Australia and Malaysia has a suitable human development index.
+
+
+```{r}
+developed_countries = data %>%
+  filter(human_development_index >= 0.854)
+
+developing_countries = data %>% #Filtering countries which are developing and already developed by their hdi(human development index)
+  filter(human_development_index < 0.854)
+developing_countries = subset(developing_countries, location!="World")
+
+# view(developed_countries)
+# view(developing_countries)
+```
+
+## Output data.csv
+
+```{r}
+write.csv(data,"data/processed/covid_A6_amber.csv", row.names = FALSE)
+write.csv(developed_countries,"data/processed/covid_A6_amber_developed.csv", row.names = FALSE)
+write.csv(developing_countries,"data/processed/covid_A6_amber_developing.csv", row.names = FALSE)
+```
+
+## Time / Countries
+
+```{r}
+Malaysia <- data[data$location == 'Malaysia',]
+Malaysia$date <- as.Date(Malaysia$date)
+
+
+Mal_case_plot <- ggplot(data = Malaysia) + 
+  geom_line(aes(x = date,
+                y = total_cases_per_million,
+                color = location)) + 
+  labs(title = "Covid 19 case data in Malaysia",
+         subtitle = "By Zhanqiu-Chen (Amber) from COVID A6",
+         # tag = "A",
+         x = "Date",
+         y = "Total cases (per million)",
+         color = "Country / Region"
+         ) +
+  theme_classic()
+
+Mal_case_plot
+
+ggsave("Amber_case_mal.png",
+       plot = Mal_case_plot,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+```
+
+```{r}
+Australia <- data[data$location == 'Australia',]
+Australia$date <- as.Date(Australia$date)
+
+
+Aus_case_plot <- ggplot(data = Australia) + 
+  geom_line(aes(x = date,
+                y = total_cases_per_million,
+                color = location)) + 
+  labs(title = "Covid 19 case data in Australia",
+         subtitle = "By Zhanqiu-Chen (Amber) from COVID A6",
+         # tag = "A",
+         x = "Date",
+         y = "Total cases (per million)",
+         color = "Country / Region"
+         ) +
+  theme_classic()
+
+Aus_case_plot
+
+ggsave("Amber_case_aus.png",
+       plot = Aus_case_plot,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+```
+
+
+```{r}
+MalAus <- data[data$location == c('Malaysia', 'Australia'),]
+MalAus$date <- as.Date(MalAus$date)
+
+
+MalAus_case_plot <- ggplot(data = MalAus) + 
+  geom_line(aes(x = date,
+                y = total_cases_per_million,
+                color = location)) + 
+  labs(title = "Covid 19 case data in Malaysia and Australia",
+         subtitle = "By Zhanqiu-Chen (Amber) from COVID A6",
+         # tag = "A",
+         x = "Date",
+         y = "Total cases (per million)",
+         color = "Country / Region"
+         ) +
+  theme_classic()
+
+MalAus_case_plot
+
+ggsave("Amber_case_malaus.png",
+       plot = MalAus_case_plot,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+```
+
+
+## model: Time series model of the number of confirmed cases in Australia
+This part will establish a time series model for the total number of confirmed cases in Australia. First, a sample of The Australian region was selected and a trend chart of the total number of confirmations was drawn. As can be seen from the figure, there is an overall upward trend in the change time series.
+
+
+```{r}
+# Developed ACF
+
+developed_cases_acf <-
+  ggAcf(developed_countries$total_cases) +
+  labs(
+    title = "ACF of total cases in developed countries",
+    subtitle = "By Zhanqiu-Chen (Amber) from COVID A6"
+    )
+
+developed_cases_acf
+
+ggsave("Amber_case_acf_developed.png",
+       plot = developed_cases_acf,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+
+
+# Developed PACF
+
+developed_cases_pacf <-
+  ggPacf(developed_countries$total_cases) +
+  labs(
+    title = "PACF of total cases in developed countries",
+    subtitle = "By Zhanqiu-Chen (Amber) from COVID A6"
+    )
+
+developed_cases_pacf
+
+ggsave("Amber_case_pacf_developed_pacf.png",
+       plot = developed_cases_pacf,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+```
+
+
+
+
+As can be seen from the automatic grading of arima model, the most suitable model is arima (0,2,1).
+
+
+```{r}
+# Developing ACF
+
+developing_cases_acf <-
+  ggAcf(developing_countries$total_cases) +
+  labs(
+    title = "ACF of total cases in developing countries",
+    subtitle = "By Zhanqiu-Chen (Amber) from COVID A6"
+    )
+
+developing_cases_acf
+
+ggsave("Amber_case_acf_developing.png",
+       plot = developing_cases_acf,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+
+
+# Developing PACF
+
+developing_cases_pacf <-
+  ggPacf(developing_countries$total_cases) +
+  labs(
+    title = "PACF of total cases in developing countries",
+    subtitle = "By Zhanqiu-Chen (Amber) from COVID A6"
+    )
+
+developing_cases_pacf
+
+ggsave("Amber_case_pacf_developing.png",
+       plot = developing_cases_pacf,
+       width = 2560,
+       height = 1440,
+       units = "px",
+       dpi = "retina",
+       path = "./plot/")
+```
+
+
+
+Trends in the number of people diagnosed in developed countries over the next 30 days based on the ARIMA model. As can be seen from the graph, the number of confirmed cases is still on the rise.
+
+```{r}
+fit <- auto.arima(developed_countries$total_cases)
+forecast(fit, 30)
+plot(forecast(fit, 30))
+
+png("./plot/Amber_case_ARIMA_developed.png",
+    width = 2560,
+    height = 1440,
+    res = 320)
+plot(forecast(fit, 30))
+dev.off()
+```
+Trends in the number of people diagnosed in developing countries over the next 30 days based on the ARIMA model. As can be seen from the graph, the number of confirmed cases is still on the rise.
+```{r}
+fit <- auto.arima(developing_countries$total_cases)
+forecast(fit, 30)
+plot(forecast(fit, 30))
+
+png("./plot/Amber_case_ARIMA_developing.png",
+    width = 2560,
+    height = 1440,
+    res = 320)
+plot(forecast(fit, 30))
+dev.off()
+```
+
